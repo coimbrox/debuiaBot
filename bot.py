@@ -350,7 +350,7 @@ async def tocar(interaction: discord.Interaction, url: str):
     if not interaction.guild.voice_client:
         if not interaction.user.voice:
             await interaction.followup.send(
-                f"{interaction.user.name} não está conectado a um canal de voz!"
+                f"{interaction.user.name} entra na Desgraça da sala pra pedir musica!!"
             )
             return
         try:
@@ -359,7 +359,7 @@ async def tocar(interaction: discord.Interaction, url: str):
                 f"Conectado ao canal de voz **{interaction.user.voice.channel.name}** e preparando a música..."
             )
         except discord.ClientException:
-            await interaction.followup.send("Já estou conectado a um canal de voz.")
+            await interaction.followup.send("Já tô na Desgraça da sala!")
             return
     else:
         voice_client = interaction.guild.voice_client
@@ -456,7 +456,9 @@ async def skip(interaction: discord.Interaction):
         and interaction.guild.id in song_queue
         and not song_queue[interaction.guild.id]
     ):
-        await interaction.response.send_message("Não há mais músicas na fila.")
+        await interaction.response.send_message(
+            "Se não tem música, vc que que eu pule oq? sua mãe?"
+        )
     else:
         await interaction.response.send_message(
             "O bot não está tocando música ou não está em um canal de voz."
