@@ -93,6 +93,7 @@ async def piada(interaction: discord.Interaction):
 # --- Comandos de voz (música) (Convertidos para Slash Commands) ---
 
 # Fila de músicas e outras variáveis de controle
+# Fila de músicas e outras variáveis de controle
 song_queue = {}
 ydl_opts = {
     "format": "bestaudio/best",
@@ -105,6 +106,8 @@ ydl_opts = {
     ],
     "outtmpl": "song.%(ext)s",
 }
+# Criar o objeto ydl aqui, no escopo global
+ydl = yt_dlp.YoutubeDL(ydl_opts)
 
 
 def play_next(ctx):
