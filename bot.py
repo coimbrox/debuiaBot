@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import yt_dlp
 import requests
 import asyncio
+from googletrans import Translator  # Importe a biblioteca de tradução
 
 from flask import Flask, json
 from threading import Thread
@@ -80,12 +81,13 @@ async def curiosidade(interaction: discord.Interaction):
 
         fato_ingles = response.json()["text"]
 
-        # O bot traduz o fato para português
-        fato_portugues = fato_ingles.translate_to_pt_br()
+        # Usando a biblioteca googletrans para traduzir
+        translator = Translator()
+        fato_traduzido = translator.translate(fato_ingles, dest="pt").text
 
         embed = discord.Embed(
             title="🧠 Curiosidade do Dia 🧠",
-            description=fato_portugues,
+            description=fato_traduzido,  # Usando o texto traduzido
             color=discord.Color.teal(),
         )
         embed.set_footer(text="Fonte: uselessfacts.jsph.pl")
