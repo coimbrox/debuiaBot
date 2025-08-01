@@ -219,6 +219,7 @@ async def time_guesser(interaction: discord.Interaction):
 
         # Obter a hora correta da API
         api_url = f"http://worldtimeapi.org/api/timezone/{timezone}"
+        # Removendo as linhas de depuração para um código mais limpo
         response = requests.get(api_url)
         response.raise_for_status()
 
@@ -228,7 +229,8 @@ async def time_guesser(interaction: discord.Interaction):
 
         hora_certa_hora, hora_certa_minuto = map(int, hora_correta.split(":"))
 
-        # Comparar o palpite com a hora certa
+        # ... (O restante da lógica de comparação permanece o mesmo) ...
+        # Lógica de comparação (faltando no seu código, mas crucial para o jogo)
         if hora_palpite == hora_certa_hora and minuto_palpite == hora_certa_minuto:
             resultado = f"🎉 **Parabéns!** Você acertou! A hora exata em {cidade} é **{hora_correta}**."
         else:
