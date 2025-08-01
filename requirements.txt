@@ -2,3 +2,4 @@ py-cord[voice]
 python-dotenv
 yt-dlp
 requests
+flask

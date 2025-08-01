@@ -6,6 +6,26 @@ from dotenv import load_dotenv
 import yt_dlp
 import requests
 
+from flask import Flask
+from threading import Thread
+
+app = Flask(__name__)
+
+
+@app.route("/")
+def home():
+    return "Olá, o bot está online!"
+
+
+def run():
+    app.run(host="0.0.0.0", port=8080)
+
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
 riot_api_key = os.getenv("RIOT_API_KEY")
@@ -325,6 +345,7 @@ async def comandos(ctx):
     await ctx.send(embed=embed)
 
 
+keep_alive()
 # Rodar o bot
 token = os.getenv("DISCORD_TOKEN")
 client.run(token)
