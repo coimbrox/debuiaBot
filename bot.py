@@ -89,7 +89,10 @@ async def piada(interaction: discord.Interaction):
 
 
 # --- Comandos de voz (música) (Convertidos para Slash Commands) ---
+# --- Comandos de voz (música) (Convertidos para Slash Commands) ---
 
+# Fila de músicas e outras variáveis de controle
+song_queue = {}
 ydl_opts = {
     "format": "bestaudio/best",
     "postprocessors": [
@@ -103,25 +106,32 @@ ydl_opts = {
 }
 
 
-@client.tree.command(name="entrar", description="Conecta o bot ao seu canal de voz.")
-async def entrar(interaction: discord.Interaction):
-    if not interaction.user.voice:
-        await interaction.response.send_message(
-            f"{interaction.user.name} não está conectado a um canal de voz!"
-        )
-        return
+def play_next(ctx):
+    if ctx.guild.id in song_queue and song_queue[ctx.guild.id]:
+        # Pega a próxima música da fila
+        next_song = song_queue[ctx.guild.id].pop(0)
 
-    canal = interaction.user.voice.channel
-    await canal.connect()
-    await interaction.response.send_message(
-        f"Conectado ao canal de voz **{canal.name}**."
-    )
+        # Reproduz a próxima música
+        source = discord.FFmpegPCMAudio(next_song["filename"])
+        ctx.voice_client.play(
+            source,
+            after=lambda e: (
+                play_next(ctx) if not e else print("Erro na reprodução:", e)
+            ),
+        )
+
+        # Envia uma mensagem informando qual música está tocando
+        coro = ctx.channel.send(f'Tocando agora: **{next_song["title"]}**')
+        client.loop.create_task(coro)
 
 
 @client.tree.command(name="sair", description="Desconecta o bot do canal de voz.")
 async def sair(interaction: discord.Interaction):
     if interaction.guild.voice_client:
         await interaction.guild.voice_client.disconnect()
+        # Limpa a fila ao sair, se ela existir
+        if interaction.guild.id in song_queue:
+            song_queue[interaction.guild.id] = []
         await interaction.response.send_message("Desconectado do canal de voz.")
     else:
         await interaction.response.send_message(
@@ -131,43 +141,94 @@ async def sair(interaction: discord.Interaction):
 
 @client.tree.command(name="tocar", description="Toca uma música do YouTube.")
 async def tocar(interaction: discord.Interaction, url: str):
-    # Verifica se o bot já está em um canal de voz
+    await interaction.response.defer()
+
+    # Se o bot não estiver em um canal de voz, ele entra
     if not interaction.guild.voice_client:
-        # Se o bot não estiver, verifica se o usuário está
         if not interaction.user.voice:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"{interaction.user.name} não está conectado a um canal de voz!"
             )
             return
 
-        # Se o usuário estiver, conecta o bot ao canal dele
         canal = interaction.user.voice.channel
-        await canal.connect()
-        await interaction.response.send_message(
-            f"Conectado ao canal de voz **{canal.name}**."
-        )
+        try:
+            await canal.connect()
+            await interaction.followup.send(
+                f"Conectado ao canal de voz **{canal.name}**."
+            )
+        except discord.ClientException:
+            await interaction.followup.send("Já estou conectado a um canal de voz.")
 
-    await interaction.response.defer()  # Usado para evitar timeout em operações longas
-
-    if interaction.guild.voice_client.is_playing():
-        interaction.guild.voice_client.stop()
-
+    # Tenta reproduzir a música
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            info = ydl.extract_info(url, download=False)
+            info = ydl.sanitize_info(info)
             filename = ydl.prepare_filename(info)
 
-        source = discord.FFmpegPCMAudio(filename, executable="ffmpeg")
-        interaction.guild.voice_client.play(
-            source, after=lambda e: print("Tocando música. Erro: %s" % e) if e else None
-        )
-
-        await interaction.followup.send(
-            f'Tocando agora: **{info.get("title", "Música")}**'
-        )
+            # Se já estiver tocando, adiciona a música à fila
+            if interaction.guild.voice_client.is_playing():
+                if interaction.guild.id not in song_queue:
+                    song_queue[interaction.guild.id] = []
+                song_queue[interaction.guild.id].append(
+                    {"filename": filename, "title": info.get("title", "Música")}
+                )
+                await interaction.followup.send(
+                    f'**{info.get("title", "Música")}** adicionada à fila.'
+                )
+            else:
+                # Caso contrário, baixa e toca a música imediatamente
+                ydl.download([url])
+                source = discord.FFmpegPCMAudio(filename)
+                interaction.guild.voice_client.play(
+                    source,
+                    after=lambda e: (
+                        play_next(interaction)
+                        if not e
+                        else print("Erro na reprodução:", e)
+                    ),
+                )
+                await interaction.followup.send(
+                    f'Tocando agora: **{info.get("title", "Música")}**'
+                )
 
     except Exception as e:
         await interaction.followup.send(f"Ocorreu um erro: {e}")
+
+
+@client.tree.command(name="parar", description="Para a música e limpa a fila.")
+async def parar(interaction: discord.Interaction):
+    if interaction.guild.voice_client:
+        interaction.guild.voice_client.stop()
+        if interaction.guild.id in song_queue:
+            song_queue[interaction.guild.id] = []
+        await interaction.response.send_message("Música parada e fila limpa.")
+    else:
+        await interaction.response.send_message(
+            "O bot não está conectado a um canal de voz."
+        )
+
+
+@client.tree.command(name="skip", description="Pula para a próxima música da fila.")
+async def skip(interaction: discord.Interaction):
+    if (
+        interaction.guild.voice_client
+        and interaction.guild.id in song_queue
+        and song_queue[interaction.guild.id]
+    ):
+        await interaction.response.send_message("Pulando para a próxima música.")
+        interaction.guild.voice_client.stop()
+    elif (
+        interaction.guild.voice_client
+        and interaction.guild.id in song_queue
+        and not song_queue[interaction.guild.id]
+    ):
+        await interaction.response.send_message("Não há mais músicas na fila.")
+    else:
+        await interaction.response.send_message(
+            "O bot não está tocando música ou não está em um canal de voz."
+        )
 
 
 # --- Comandos de integração com a API da Riot (Convertidos para Slash Commands) ---
