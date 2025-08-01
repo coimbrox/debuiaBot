@@ -138,63 +138,67 @@ async def sair(interaction: discord.Interaction):
             "O bot não está conectado a um canal de voz."
         )
 
+        @client.tree.command(name="tocar", description="Toca uma música do YouTube.")
+        async def tocar(interaction: discord.Interaction, url: str):
+            # Defer a resposta para evitar timeout
+            await interaction.response.defer()
 
-@client.tree.command(name="tocar", description="Toca uma música do YouTube.")
-async def tocar(interaction: discord.Interaction, url: str):
-    await interaction.response.defer()
+            # Se o bot não estiver em um canal de voz, ele entra
+            if not interaction.guild.voice_client:
+                if not interaction.user.voice:
+                    await interaction.followup.send(
+                        f"{interaction.user.name} não está conectado a um canal de voz!"
+                    )
+                    return
+                try:
+                    await interaction.user.voice.channel.connect()
+                    await interaction.followup.send(
+                        f"Conectado ao canal de voz **{interaction.user.voice.channel.name}** e preparando a música..."
+                    )
+                except discord.ClientException:
+                    await interaction.followup.send(
+                        "Já estou conectado a um canal de voz."
+                    )
+                    return
 
-    # Se o bot não estiver em um canal de voz, ele entra
-    if not interaction.guild.voice_client:
-        if not interaction.user.voice:
-            await interaction.followup.send(
-                f"{interaction.user.name} não está conectado a um canal de voz!"
-            )
-            return
+            try:
+                # Usar asyncio.to_thread para executar a operação de download em um thread separado
+                info = await asyncio.to_thread(ydl.extract_info, url, download=False)
+                info = await asyncio.to_thread(ydl.sanitize_info, info)
 
-        canal = interaction.user.voice.channel
-        try:
-            await canal.connect()
-            await interaction.followup.send(
-                f"Conectado ao canal de voz **{canal.name}**."
-            )
-        except discord.ClientException:
-            await interaction.followup.send("Já estou conectado a um canal de voz.")
+                # Se a música já estiver tocando, adiciona à fila
+                if interaction.guild.voice_client.is_playing():
+                    filename = info.get("filename", info["title"] + ".mp3")
+                    if interaction.guild.id not in song_queue:
+                        song_queue[interaction.guild.id] = []
+                    song_queue[interaction.guild.id].append(
+                        {"filename": filename, "title": info.get("title", "Música")}
+                    )
+                    await interaction.followup.send(
+                        f'**{info.get("title", "Música")}** adicionada à fila.'
+                    )
+                else:
+                    # Baixa e toca a música imediatamente
+                    await asyncio.to_thread(ydl.download, [url])
+                    filename = info.get("filename", info["title"] + ".mp3")
+                    source = discord.FFmpegPCMAudio(filename)
+                    interaction.guild.voice_client.play(
+                        source,
+                        after=lambda e: (
+                            play_next(interaction)
+                            if not e
+                            else print("Erro na reprodução:", e)
+                        ),
+                    )
+                    await interaction.followup.send(
+                        f'Tocando agora: **{info.get("title", "Música")}**'
+                    )
 
-    # Tenta reproduzir a música
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            info = ydl.sanitize_info(info)
-            filename = ydl.prepare_filename(info)
-
-            # Se já estiver tocando, adiciona a música à fila
-            if interaction.guild.voice_client.is_playing():
-                if interaction.guild.id not in song_queue:
-                    song_queue[interaction.guild.id] = []
-                song_queue[interaction.guild.id].append(
-                    {"filename": filename, "title": info.get("title", "Música")}
-                )
+            except Exception as e:
+                print(f"Ocorreu um erro no comando /tocar: {e}")
                 await interaction.followup.send(
-                    f'**{info.get("title", "Música")}** adicionada à fila.'
+                    f"Ocorreu um erro ao tentar tocar a música: {e}"
                 )
-            else:
-                # Caso contrário, baixa e toca a música imediatamente
-                ydl.download([url])
-                source = discord.FFmpegPCMAudio(filename)
-                interaction.guild.voice_client.play(
-                    source,
-                    after=lambda e: (
-                        play_next(interaction)
-                        if not e
-                        else print("Erro na reprodução:", e)
-                    ),
-                )
-                await interaction.followup.send(
-                    f'Tocando agora: **{info.get("title", "Música")}**'
-                )
-
-    except Exception as e:
-        await interaction.followup.send(f"Ocorreu um erro: {e}")
 
 
 @client.tree.command(name="parar", description="Para a música e limpa a fila.")
