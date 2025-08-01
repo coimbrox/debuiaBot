@@ -1,3 +1,4 @@
+import http
 import discord
 from discord.ext import commands
 import random
@@ -7,7 +8,7 @@ import yt_dlp
 import requests
 import asyncio
 
-from flask import Flask
+from flask import Flask, json
 from threading import Thread
 
 app = Flask(__name__)
@@ -64,69 +65,6 @@ async def dica(interaction: discord.Interaction):
     await interaction.response.send_message(
         "Lembre-se de sempre comprar wards para ter visão do mapa!"
     )
-
-
-import requests
-
-
-@client.tree.command(
-    name="signo", description="Mostra a previsão diária de um signo do zodíaco."
-)
-async def signo(interaction: discord.Interaction, signo: str):
-    await interaction.response.defer()
-
-    signos_validos = [
-        "aquario",
-        "peixes",
-        "aries",
-        "touro",
-        "gemeos",
-        "cancer",
-        "leao",
-        "virgem",
-        "libra",
-        "escorpiao",
-        "sagitario",
-        "capricornio",
-    ]
-    signo_lower = signo.lower()
-
-    if signo_lower not in signos_validos:
-        await interaction.followup.send(
-            "Por favor, forneça um signo válido em português (Ex: Gêmeos)."
-        )
-        return
-
-    # Mapear o nome do signo para o formato da API (sem acentuação)
-    signo_api = signo_lower.replace("ã", "a").replace("ç", "c")
-
-    # URL da API de horóscopo diário em português
-    api_url = f"https://horoscopefree.herokuapp.com/daily/pt/{signo_api}"
-
-    try:
-        response = requests.get(api_url)
-        response.raise_for_status()  # Lança um erro para status de resposta ruins (4xx ou 5xx)
-        horoscopo_data = response.json()
-
-        previsao = horoscopo_data.get(
-            "horoscopo_hoje", "Não foi possível obter a previsão."
-        )
-
-        # Criar o embed com a previsão do dia
-        embed = discord.Embed(
-            title=f"Horóscopo do Dia para {signo.capitalize()}",
-            description=previsao,
-            color=discord.Color.gold(),
-        )
-        embed.set_footer(text="Fonte: horoscopefree.herokuapp.com")
-
-        await interaction.followup.send(embed=embed)
-
-    except requests.exceptions.RequestException as err:
-        print(f"Erro ao acessar a API de horóscopo: {err}")
-        await interaction.followup.send(
-            "Ocorreu um erro ao tentar buscar a previsão do horóscopo."
-        )
 
 
 @client.tree.command(
@@ -221,6 +159,7 @@ async def time_guesser(interaction: discord.Interaction):
         api_url = f"http://worldtimeapi.org/api/timezone/{timezone}"
         # Removendo as linhas de depuração para um código mais limpo
         response = requests.get(api_url)
+
         response.raise_for_status()
 
         dados_horario = response.json()
