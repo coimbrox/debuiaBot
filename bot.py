@@ -131,11 +131,21 @@ async def sair(interaction: discord.Interaction):
 
 @client.tree.command(name="tocar", description="Toca uma música do YouTube.")
 async def tocar(interaction: discord.Interaction, url: str):
+    # Verifica se o bot já está em um canal de voz
     if not interaction.guild.voice_client:
+        # Se o bot não estiver, verifica se o usuário está
+        if not interaction.user.voice:
+            await interaction.response.send_message(
+                f"{interaction.user.name} não está conectado a um canal de voz!"
+            )
+            return
+
+        # Se o usuário estiver, conecta o bot ao canal dele
+        canal = interaction.user.voice.channel
+        await canal.connect()
         await interaction.response.send_message(
-            "O bot não está conectado a um canal de voz."
+            f"Conectado ao canal de voz **{canal.name}**."
         )
-        return
 
     await interaction.response.defer()  # Usado para evitar timeout em operações longas
 
