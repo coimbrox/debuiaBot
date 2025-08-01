@@ -33,9 +33,7 @@ def keep_alive():
 load_dotenv()
 riot_api_key = os.getenv("RIOT_API_KEY")
 # Adicione esta linha no topo do seu arquivo Python
-FFMPEG_EXECUTABLE = (
-    "/nix/store/15alrig3q4xjwfc3rbnsgj4bj29zn6ww-ffmpeg-7.1.1-bin/bin/ffmpeg"
-)
+
 
 # Configuração de intenções
 intents = discord.Intents.default()
@@ -297,16 +295,59 @@ async def piada(interaction: discord.Interaction):
 # --- Comandos de voz (música) (Convertidos para Slash Commands) ---
 
 # Fila de músicas e outras variáveis de controle
-song_queue = {}
-ydl_opts = {
+FFMPEG_EXECUTABLE = (
+    "/nix/store/15alrig3q4xjwfc3rbnsgj4bj29zn6ww-ffmpeg-7.1.1-bin/bin/ffmpeg"
+)
+# Ajuste a configuração do yt_dlp
+YTDL_OPTIONS = {
     "format": "bestaudio/best",
     "noplaylist": True,
     "default_search": "ytsearch",
     "quiet": True,
     "extract_flat": "in_playlist",
-    "force-ipv4": True,  # Garante que a conexão seja feita via IPv4
+    "force-ipv4": True,
 }
-ydl = yt_dlp.YoutubeDL(ydl_opts)
+
+# Fila de músicas e outras variáveis de controle
+song_queue = {}
+
+
+class YTDLSource(discord.PCMVolumeTransformer):
+    def __init__(self, source, *, data, volume=0.5):
+        super().__init__(source, volume)
+        self.data = data
+        self.title = data.get("title")
+        self.url = data.get("url")
+
+    @classmethod
+    async def from_url(cls, url, *, loop=None, stream=True):
+        loop = loop or asyncio.get_event_loop()
+        data = await loop.run_in_executor(
+            None,
+            lambda: yt_dlp.YoutubeDL(YTDL_OPTIONS).extract_info(
+                url, download=not stream
+            ),
+        )
+
+        if "entries" in data:
+            data = data["entries"][0]
+
+        filename = (
+            data["url"]
+            if stream
+            else yt_dlp.YoutubeDL(YTDL_OPTIONS).prepare_filename(data)
+        )
+
+        # O comando abaixo executa o yt-dlp e passa o áudio para o ffmpeg via pipe
+        # Isso é o que resolve os problemas de streaming
+        return cls(
+            discord.FFmpegPCMAudio(
+                filename,
+                executable=FFMPEG_EXECUTABLE,
+                before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+            ),
+            data=data,
+        )
 
 
 @client.tree.command(name="sair", description="Desconecta o bot do canal de voz.")
@@ -329,23 +370,18 @@ async def play_next_async(interaction: discord.Interaction):
     if guild_id in song_queue and song_queue[guild_id]:
         next_song = song_queue[guild_id].pop(0)
         try:
-            source = discord.FFmpegPCMAudio(
-                next_song["url"],
-                executable=FFMPEG_EXECUTABLE,  # Informa o caminho do FFmpeg
-                before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+            player = await YTDLSource.from_url(
+                next_song["url"], loop=client.loop, stream=True
             )
             interaction.guild.voice_client.play(
-                source,
+                player,
                 after=lambda e: (
                     client.loop.create_task(play_next_async(interaction))
                     if not e
                     else print("Erro na reprodução:", e)
                 ),
             )
-
-            coro = interaction.channel.send(f'Tocando agora: **{next_song["title"]}**')
-            await coro
-
+            await interaction.channel.send(f"Tocando agora: **{player.title}**")
         except Exception as e:
             print(f"Erro ao tentar reproduzir a música: {e}")
             await interaction.channel.send(
@@ -358,7 +394,6 @@ async def play_next_async(interaction: discord.Interaction):
 @client.tree.command(name="musica", description="Toca uma música do YouTube.")
 async def musica(interaction: discord.Interaction, url: str):
     await interaction.response.defer()
-
     if not interaction.user.voice:
         await interaction.followup.send("Entra na Desgraça da sala pra pedir musica!")
         return
@@ -372,37 +407,24 @@ async def musica(interaction: discord.Interaction, url: str):
             return
 
     try:
-        info = await asyncio.to_thread(ydl.extract_info, url, download=False)
-        if "entries" in info:
-            info = info["entries"][0]
-
-        title = info.get("title", "Música Desconhecida")
-        audio_url = info.get("url")
-        if not audio_url:
-            await interaction.followup.send("Não foi possível obter a URL de áudio.")
-            return
-
         if voice_client.is_playing():
             if interaction.guild.id not in song_queue:
                 song_queue[interaction.guild.id] = []
-            song_queue[interaction.guild.id].append({"url": url, "title": title})
-            await interaction.followup.send(f"**{title}** adicionada à fila.")
-        else:
-            # Note que aqui passamos a URL original do YouTube, não a URL do áudio
-            source = await discord.FFmpegOpusAudio.from_probe(
-                url,
-                executable=FFMPEG_EXECUTABLE,
-                before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+            song_queue[interaction.guild.id].append(
+                {"url": url, "title": "Carregando..."}
             )
+            await interaction.followup.send(f"Música adicionada à fila.")
+        else:
+            player = await YTDLSource.from_url(url, loop=client.loop, stream=True)
             voice_client.play(
-                source,
+                player,
                 after=lambda e: (
                     client.loop.create_task(play_next_async(interaction))
                     if not e
                     else print("Erro na reprodução:", e)
                 ),
             )
-            await interaction.followup.send(f"Tocando agora: **{title}**")
+            await interaction.followup.send(f"Tocando agora: **{player.title}**")
 
     except Exception as e:
         print(f"Ocorreu um erro no comando /musica: {e}")
