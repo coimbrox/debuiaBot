@@ -268,11 +268,36 @@ async def ship(interaction: discord.Interaction, nome1: str, nome2: str):
     await interaction.followup.send(embed=embed)
 
 
-@client.tree.command(name="lol-build", description="Sugere uma build para um campeão.")
-async def lol_build(interaction: discord.Interaction):
-    await interaction.response.send_message(
-        "Tryndamere: Gume do Infinito, Colhedor de Essência e Mata-Cráquens."
-    )
+@client.tree.command(
+    name="lol-build", description="Sugere uma build para um campeão e lane."
+)
+async def lol_build(interaction: discord.Interaction, champion: str, lane: str):
+    champion = champion.lower()
+    lane = lane.lower()
+    url = f"https://lolalytics.com/api/lol/{champion}/build/?lane={lane}&tier=platinum_plus&patch=14.14"
+
+    try:
+        response = requests.get(url, timeout=10)
+        data = response.json()
+
+        if "items" not in data or "core" not in data["items"]:
+            await interaction.response.send_message(
+                f"Não encontrei dados para **{champion.capitalize()}** na lane **{lane}**."
+            )
+            return
+
+        # Pega os 3 itens principais da build
+        core_items = data["items"]["core"]["items"][:3]
+        item_names = ", ".join([item["name"] for item in core_items])
+
+        await interaction.response.send_message(
+            f"**{champion.capitalize()} ({lane.capitalize()})**: {item_names}"
+        )
+
+    except Exception as e:
+        await interaction.response.send_message(
+            f"Erro ao buscar build para {champion} ({lane}): {e}"
+        )
 
 
 @client.tree.command(name="debuia", description="Exibe a frase de efeito do time.")
