@@ -6,3 +6,4 @@ discord.py==1.7.3
 asyncio
 http
 googletrans==4.0.0-rc1
+PyNaCl

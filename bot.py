@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import yt_dlp
 import requests
 import asyncio
-from googletrans import Translator  # Importe a biblioteca de tradução
+from googletrans import Translator
 
 from flask import Flask, json
 from threading import Thread
@@ -32,6 +32,10 @@ def keep_alive():
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
 riot_api_key = os.getenv("RIOT_API_KEY")
+# Adicione esta linha no topo do seu arquivo Python
+FFMPEG_EXECUTABLE = (
+    "/nix/store/15alrig3q4xjwfc3rbnsgj4bj29zn6ww-ffmpeg-7.1.1-bin/bin/ffmpeg"
+)
 
 # Configuração de intenções
 intents = discord.Intents.default()
@@ -319,12 +323,6 @@ async def sair(interaction: discord.Interaction):
         )
 
 
-# Adicione esta linha no topo do seu arquivo Python
-FFMPEG_EXECUTABLE = (
-    "/nix/store/15alrig3q4xjwfc3rbnsgj4bj29zn6ww-ffmpeg-7.1.1-bin/bin/ffmpeg"
-)
-
-
 # --- Função para tocar a próxima música (modificada) ---
 async def play_next_async(interaction: discord.Interaction):
     guild_id = interaction.guild.id
@@ -356,9 +354,9 @@ async def play_next_async(interaction: discord.Interaction):
             await play_next_async(interaction)
 
 
-# --- Comando /tocar (modificado) ---
+#
 @client.tree.command(name="musica", description="Toca uma música do YouTube.")
-async def tocar(interaction: discord.Interaction, url: str):
+async def musica(interaction: discord.Interaction, url: str):
     await interaction.response.defer()
 
     if not interaction.user.voice:
@@ -374,16 +372,12 @@ async def tocar(interaction: discord.Interaction, url: str):
             return
 
     try:
-        # Extrai o link de áudio e as opções do FFmpeg
         info = await asyncio.to_thread(ydl.extract_info, url, download=False)
         if "entries" in info:
             info = info["entries"][0]
 
         title = info.get("title", "Música Desconhecida")
         audio_url = info.get("url")
-        # options é um campo que o yt-dlp pode fornecer com flags do ffmpeg
-        ffmpeg_options = info.get("ffmpeg_options")
-
         if not audio_url:
             await interaction.followup.send("Não foi possível obter a URL de áudio.")
             return
@@ -391,12 +385,14 @@ async def tocar(interaction: discord.Interaction, url: str):
         if voice_client.is_playing():
             if interaction.guild.id not in song_queue:
                 song_queue[interaction.guild.id] = []
-            song_queue[interaction.guild.id].append({"url": audio_url, "title": title})
+            song_queue[interaction.guild.id].append({"url": url, "title": title})
             await interaction.followup.send(f"**{title}** adicionada à fila.")
         else:
-            # Passa a URL e as opções do FFmpeg diretamente
-            source = discord.FFmpegPCMAudio(
-                audio_url, executable=FFMPEG_EXECUTABLE, options=ffmpeg_options
+            # Note que aqui passamos a URL original do YouTube, não a URL do áudio
+            source = await discord.FFmpegOpusAudio.from_probe(
+                url,
+                executable=FFMPEG_EXECUTABLE,
+                before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
             )
             voice_client.play(
                 source,
