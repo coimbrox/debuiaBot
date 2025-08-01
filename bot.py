@@ -293,40 +293,14 @@ async def piada(interaction: discord.Interaction):
 # --- Comandos de voz (música) (Convertidos para Slash Commands) ---
 
 # Fila de músicas e outras variáveis de controle
-# Fila de músicas e outras variáveis de controle
 song_queue = {}
 ydl_opts = {
     "format": "bestaudio/best",
-    "postprocessors": [
-        {
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "192",
-        }
-    ],
-    "outtmpl": "song.%(ext)s",
+    "noplaylist": True,  # Não queremos baixar playlists inteiras
+    "default_search": "auto",
+    "quiet": True,
 }
-# Criar o objeto ydl aqui, no escopo global
 ydl = yt_dlp.YoutubeDL(ydl_opts)
-
-
-def play_next(ctx):
-    if ctx.guild.id in song_queue and song_queue[ctx.guild.id]:
-        # Pega a próxima música da fila
-        next_song = song_queue[ctx.guild.id].pop(0)
-
-        # Reproduz a próxima música
-        source = discord.FFmpegPCMAudio(next_song["filename"])
-        ctx.voice_client.play(
-            source,
-            after=lambda e: (
-                play_next(ctx) if not e else print("Erro na reprodução:", e)
-            ),
-        )
-
-        # Envia uma mensagem informando qual música está tocando
-        coro = ctx.channel.send(f'Tocando agora: **{next_song["title"]}**')
-        client.loop.create_task(coro)
 
 
 @client.tree.command(name="sair", description="Desconecta o bot do canal de voz.")
@@ -343,87 +317,97 @@ async def sair(interaction: discord.Interaction):
         )
 
 
-@client.tree.command(name="tocar", description="Toca uma música do YouTube.")
+# Adicione esta linha no topo do seu arquivo Python
+FFMPEG_EXECUTABLE = (
+    "/nix/store/15alrig3q4xjwfc3rbnsgj4bj29zn6ww-ffmpeg-7.1.1-bin/bin/ffmpeg"
+)
+
+
+# --- Função para tocar a próxima música (modificada) ---
+async def play_next_async(interaction: discord.Interaction):
+    guild_id = interaction.guild.id
+    if guild_id in song_queue and song_queue[guild_id]:
+        next_song = song_queue[guild_id].pop(0)
+        try:
+            source = discord.FFmpegPCMAudio(
+                next_song["url"],
+                executable=FFMPEG_EXECUTABLE,  # Informa o caminho do FFmpeg
+                before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+            )
+            interaction.guild.voice_client.play(
+                source,
+                after=lambda e: (
+                    client.loop.create_task(play_next_async(interaction))
+                    if not e
+                    else print("Erro na reprodução:", e)
+                ),
+            )
+
+            coro = interaction.channel.send(f'Tocando agora: **{next_song["title"]}**')
+            await coro
+
+        except Exception as e:
+            print(f"Erro ao tentar reproduzir a música: {e}")
+            await interaction.channel.send(
+                f"Ocorreu um erro ao tocar a música: **{next_song['title']}**"
+            )
+            await play_next_async(interaction)
+
+
+# --- Comando /tocar (modificado) ---
+@client.tree.command(name="musica", description="Toca uma música do YouTube.")
 async def tocar(interaction: discord.Interaction, url: str):
     await interaction.response.defer()
 
-    if not interaction.guild.voice_client:
-        if not interaction.user.voice:
-            await interaction.followup.send(
-                f"{interaction.user.name} entra na Desgraça da sala pra pedir musica!!"
-            )
-            return
+    if not interaction.user.voice:
+        await interaction.followup.send("Entra na Desgraça da sala pra pedir musica!")
+        return
+
+    voice_client = interaction.guild.voice_client
+    if not voice_client:
         try:
             voice_client = await interaction.user.voice.channel.connect()
-            await interaction.followup.send(
-                f"Conectado ao canal de voz **{interaction.user.voice.channel.name}** e preparando a música..."
-            )
         except discord.ClientException:
-            await interaction.followup.send("Já tô na Desgraça da sala!")
+            await interaction.followup.send("Já estou conectado a um canal de voz.")
             return
-    else:
-        voice_client = interaction.guild.voice_client
 
     try:
         info = await asyncio.to_thread(ydl.extract_info, url, download=False)
-
         if "entries" in info:
-            # É uma playlist
+            info = info["entries"][0]
             await interaction.followup.send(
-                f'Encontrei a playlist **{info.get("title", "Playlist")}**. Adicionando as músicas à fila...'
+                "Playlist encontrada, tocando a primeira música."
             )
-            for entry in info["entries"]:
-                sanitized_info = await asyncio.to_thread(ydl.sanitize_info, entry)
-                filename = ydl.prepare_filename(sanitized_info)
 
-                # Adiciona cada música à fila
-                if interaction.guild.id not in song_queue:
-                    song_queue[interaction.guild.id] = []
-                song_queue[interaction.guild.id].append(
-                    {
-                        "filename": filename,
-                        "title": sanitized_info.get("title", "Música"),
-                    }
-                )
+        title = info.get("title", "Música Desconhecida")
+        audio_url = info.get("url")
+        if not audio_url:
+            await interaction.followup.send("Não foi possível obter a URL de áudio.")
+            return
 
-            # Se a reprodução não estiver em andamento, inicia a primeira música da fila
-            if not voice_client.is_playing():
-                play_next(interaction)
-
+        if voice_client.is_playing():
+            if interaction.guild.id not in song_queue:
+                song_queue[interaction.guild.id] = []
+            song_queue[interaction.guild.id].append({"url": audio_url, "title": title})
+            await interaction.followup.send(f"**{title}** adicionada à fila.")
         else:
-            # É uma única música
-            sanitized_info = await asyncio.to_thread(ydl.sanitize_info, info)
-            filename = ydl.prepare_filename(sanitized_info)
-
-            if voice_client.is_playing():
-                if interaction.guild.id not in song_queue:
-                    song_queue[interaction.guild.id] = []
-                song_queue[interaction.guild.id].append(
-                    {
-                        "filename": filename,
-                        "title": sanitized_info.get("title", "Música"),
-                    }
-                )
-                await interaction.followup.send(
-                    f'**{sanitized_info.get("title", "Música")}** adicionada à fila.'
-                )
-            else:
-                await asyncio.to_thread(ydl.download, [url])
-                source = discord.FFmpegPCMAudio(filename)
-                voice_client.play(
-                    source,
-                    after=lambda e: (
-                        play_next(interaction)
-                        if not e
-                        else print("Erro na reprodução:", e)
-                    ),
-                )
-                await interaction.followup.send(
-                    f'Tocando agora: **{sanitized_info.get("title", "Música")}**'
-                )
+            source = discord.FFmpegPCMAudio(
+                audio_url,
+                executable=FFMPEG_EXECUTABLE,  # Informa o caminho do FFmpeg
+                before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+            )
+            voice_client.play(
+                source,
+                after=lambda e: (
+                    client.loop.create_task(play_next_async(interaction))
+                    if not e
+                    else print("Erro na reprodução:", e)
+                ),
+            )
+            await interaction.followup.send(f"Tocando agora: **{title}**")
 
     except Exception as e:
-        print(f"Ocorreu um erro no comando /tocar: {e}")
+        print(f"Ocorreu um erro no comando /musica: {e}")
         await interaction.followup.send(
             f"Ocorreu um erro ao tentar tocar a música: {e}"
         )
