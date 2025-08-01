@@ -130,6 +130,166 @@ async def signo(interaction: discord.Interaction, signo: str):
 
 
 @client.tree.command(
+    name="curiosidade", description="Mostra uma curiosidade aleatória."
+)
+async def curiosidade(interaction: discord.Interaction):
+    await interaction.response.defer()
+
+    try:
+        api_url = "https://uselessfacts.jsph.pl/random.json"
+        response = requests.get(api_url)
+        response.raise_for_status()
+
+        fato_ingles = response.json()["text"]
+
+        # O bot traduz o fato para português
+        fato_portugues = fato_ingles.translate_to_pt_br()
+
+        embed = discord.Embed(
+            title="🧠 Curiosidade do Dia 🧠",
+            description=fato_portugues,
+            color=discord.Color.teal(),
+        )
+        embed.set_footer(text="Fonte: uselessfacts.jsph.pl")
+
+        await interaction.followup.send(embed=embed)
+
+    except requests.exceptions.RequestException as err:
+        print(f"Erro ao acessar a API de fatos: {err}")
+        await interaction.followup.send(
+            "Ocorreu um erro ao tentar buscar uma curiosidade."
+        )
+    except Exception as e:
+        print(f"Ocorreu um erro inesperado: {e}")
+        await interaction.followup.send("Ocorreu um erro ao processar a curiosidade.")
+
+
+# Dicionário de cidades e seus fusos horários (Timezones IANA)
+cidades = {
+    "Tokyo": "Asia/Tokyo",
+    "Londres": "Europe/London",
+    "Nova York": "America/New_York",
+    "São Paulo": "America/Sao_Paulo",
+    "Dubai": "Asia/Dubai",
+    "Sydney": "Australia/Sydney",
+    "Paris": "Europe/Paris",
+}
+
+
+@client.tree.command(
+    name="timeguesser",
+    description="Tente adivinhar a hora atual em uma cidade aleatória.",
+)
+async def time_guesser(interaction: discord.Interaction):
+    await interaction.response.defer()
+
+    # Escolher uma cidade aleatória para o jogo
+    cidade, timezone = random.choice(list(cidades.items()))
+
+    # Enviar a pergunta para o usuário
+    embed_pergunta = discord.Embed(
+        title="⏰ Timeguesser!",
+        description=f"Qual é a hora atual em **{cidade}**? (Responda em formato HH:MM)",
+        color=discord.Color.purple(),
+    )
+    await interaction.followup.send(embed=embed_pergunta)
+
+    def check(m):
+        return m.author == interaction.user and m.channel == interaction.channel
+
+    try:
+        # Esperar pela resposta do usuário por no máximo 30 segundos
+        resposta_usuario = await client.wait_for("message", check=check, timeout=30.0)
+
+        palpite_texto = resposta_usuario.content
+        palpite_valido = False
+
+        try:
+            hora_palpite, minuto_palpite = map(int, palpite_texto.split(":"))
+            if 0 <= hora_palpite <= 23 and 0 <= minuto_palpite <= 59:
+                palpite_valido = True
+        except ValueError:
+            pass
+
+        if not palpite_valido:
+            await interaction.channel.send(
+                "Palpite inválido. Por favor, use o formato HH:MM."
+            )
+            return
+
+        # Obter a hora correta da API
+        api_url = f"http://worldtimeapi.org/api/timezone/{timezone}"
+        response = requests.get(api_url)
+        response.raise_for_status()
+
+        dados_horario = response.json()
+        hora_correta_iso = dados_horario["datetime"]
+        hora_correta = hora_correta_iso[11:16]  # Extrai HH:MM
+
+        hora_certa_hora, hora_certa_minuto = map(int, hora_correta.split(":"))
+
+        # Comparar o palpite com a hora certa
+        if hora_palpite == hora_certa_hora and minuto_palpite == hora_certa_minuto:
+            resultado = f"🎉 **Parabéns!** Você acertou! A hora exata em {cidade} é **{hora_correta}**."
+        else:
+            resultado = f"😔 Você errou. A hora exata em {cidade} é **{hora_correta}**."
+
+        await interaction.channel.send(resultado)
+
+    except asyncio.TimeoutError:
+        await interaction.channel.send("O tempo acabou! Ninguém respondeu a tempo.")
+    except requests.exceptions.RequestException as err:
+        print(f"Erro ao acessar a API de horários: {err}")
+        await interaction.channel.send("Ocorreu um erro ao buscar a hora correta.")
+    except Exception as e:
+        print(f"Ocorreu um erro inesperado: {e}")
+        await interaction.channel.send("Ocorreu um erro no jogo.")
+
+
+@client.tree.command(
+    name="dado", description="Rola um dado com o número de lados especificado."
+)
+async def dado(interaction: discord.Interaction, lados: int):
+    if lados < 1:
+        await interaction.response.send_message(
+            "O número de lados deve ser pelo menos 1.", ephemeral=True
+        )
+        return
+
+    resultado = random.randint(1, lados)
+    await interaction.response.send_message(
+        f"🎲 Você rolou um dado de {lados} lados e tirou **{resultado}**!"
+    )
+
+
+respostas = [
+    "Sim, com certeza.",
+    "É certo.",
+    "Sem dúvida.",
+    "Sim.",
+    "Você pode contar com isso.",
+    "Provavelmente.",
+    "A resposta está nebulosa, tente novamente.",
+    "Pergunte mais tarde.",
+    "Não posso prever agora.",
+    "Não conte com isso.",
+    "Minhas fontes dizem não.",
+    "Não parece bom.",
+    "Muito duvidoso.",
+    "Não.",
+]
+
+
+@client.tree.command(
+    name="8ball", description="Responde a uma pergunta com uma resposta aleatória."
+)
+async def magic_8ball(interaction: discord.Interaction, pergunta: str):
+    await interaction.response.send_message(
+        f"🎱 **{pergunta}**\n**Resposta:** {random.choice(respostas)}"
+    )
+
+
+@client.tree.command(
     name="ship", description="Calcula a compatibilidade entre duas pessoas."
 )
 async def ship(interaction: discord.Interaction, nome1: str, nome2: str):
