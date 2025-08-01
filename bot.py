@@ -44,6 +44,13 @@ intents.members = True
 # Cria uma instância do bot, SEM prefixo de comando
 client = commands.Bot(command_prefix="!", intents=intents)
 # A classe commands.Bot já cria uma CommandTree, então a linha 'tree = ...' foi removida.
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/115.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://lolalytics.com/",
+}
 
 
 # Evento de inicialização
@@ -277,7 +284,13 @@ async def lol_build(interaction: discord.Interaction, champion: str, lane: str):
     url = f"https://lolalytics.com/api/lol/{champion}/build/?lane={lane}&tier=platinum_plus&patch=14.14"
 
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers=HEADERS, timeout=10)
+        if response.status_code != 200:
+            await interaction.response.send_message(
+                f"Não consegui buscar a build. Status code: {response.status_code}"
+            )
+            return
+
         data = response.json()
 
         if "items" not in data or "core" not in data["items"]:
@@ -286,7 +299,6 @@ async def lol_build(interaction: discord.Interaction, champion: str, lane: str):
             )
             return
 
-        # Pega os 3 itens principais da build
         core_items = data["items"]["core"]["items"][:3]
         item_names = ", ".join([item["name"] for item in core_items])
 
