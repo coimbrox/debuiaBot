@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 import yt_dlp
 import requests
+import asyncio
 
 from flask import Flask
 from threading import Thread
@@ -138,67 +139,91 @@ async def sair(interaction: discord.Interaction):
             "O bot não está conectado a um canal de voz."
         )
 
-        @client.tree.command(name="tocar", description="Toca uma música do YouTube.")
-        async def tocar(interaction: discord.Interaction, url: str):
-            # Defer a resposta para evitar timeout
-            await interaction.response.defer()
 
-            # Se o bot não estiver em um canal de voz, ele entra
-            if not interaction.guild.voice_client:
-                if not interaction.user.voice:
-                    await interaction.followup.send(
-                        f"{interaction.user.name} não está conectado a um canal de voz!"
-                    )
-                    return
-                try:
-                    await interaction.user.voice.channel.connect()
-                    await interaction.followup.send(
-                        f"Conectado ao canal de voz **{interaction.user.voice.channel.name}** e preparando a música..."
-                    )
-                except discord.ClientException:
-                    await interaction.followup.send(
-                        "Já estou conectado a um canal de voz."
-                    )
-                    return
+@client.tree.command(name="tocar", description="Toca uma música do YouTube.")
+async def tocar(interaction: discord.Interaction, url: str):
+    await interaction.response.defer()
 
-            try:
-                # Usar asyncio.to_thread para executar a operação de download em um thread separado
-                info = await asyncio.to_thread(ydl.extract_info, url, download=False)
-                info = await asyncio.to_thread(ydl.sanitize_info, info)
+    if not interaction.guild.voice_client:
+        if not interaction.user.voice:
+            await interaction.followup.send(
+                f"{interaction.user.name} não está conectado a um canal de voz!"
+            )
+            return
+        try:
+            voice_client = await interaction.user.voice.channel.connect()
+            await interaction.followup.send(
+                f"Conectado ao canal de voz **{interaction.user.voice.channel.name}** e preparando a música..."
+            )
+        except discord.ClientException:
+            await interaction.followup.send("Já estou conectado a um canal de voz.")
+            return
+    else:
+        voice_client = interaction.guild.voice_client
 
-                # Se a música já estiver tocando, adiciona à fila
-                if interaction.guild.voice_client.is_playing():
-                    filename = info.get("filename", info["title"] + ".mp3")
-                    if interaction.guild.id not in song_queue:
-                        song_queue[interaction.guild.id] = []
-                    song_queue[interaction.guild.id].append(
-                        {"filename": filename, "title": info.get("title", "Música")}
-                    )
-                    await interaction.followup.send(
-                        f'**{info.get("title", "Música")}** adicionada à fila.'
-                    )
-                else:
-                    # Baixa e toca a música imediatamente
-                    await asyncio.to_thread(ydl.download, [url])
-                    filename = info.get("filename", info["title"] + ".mp3")
-                    source = discord.FFmpegPCMAudio(filename)
-                    interaction.guild.voice_client.play(
-                        source,
-                        after=lambda e: (
-                            play_next(interaction)
-                            if not e
-                            else print("Erro na reprodução:", e)
-                        ),
-                    )
-                    await interaction.followup.send(
-                        f'Tocando agora: **{info.get("title", "Música")}**'
-                    )
+    try:
+        info = await asyncio.to_thread(ydl.extract_info, url, download=False)
 
-            except Exception as e:
-                print(f"Ocorreu um erro no comando /tocar: {e}")
-                await interaction.followup.send(
-                    f"Ocorreu um erro ao tentar tocar a música: {e}"
+        if "entries" in info:
+            # É uma playlist
+            await interaction.followup.send(
+                f'Encontrei a playlist **{info.get("title", "Playlist")}**. Adicionando as músicas à fila...'
+            )
+            for entry in info["entries"]:
+                sanitized_info = await asyncio.to_thread(ydl.sanitize_info, entry)
+                filename = ydl.prepare_filename(sanitized_info)
+
+                # Adiciona cada música à fila
+                if interaction.guild.id not in song_queue:
+                    song_queue[interaction.guild.id] = []
+                song_queue[interaction.guild.id].append(
+                    {
+                        "filename": filename,
+                        "title": sanitized_info.get("title", "Música"),
+                    }
                 )
+
+            # Se a reprodução não estiver em andamento, inicia a primeira música da fila
+            if not voice_client.is_playing():
+                play_next(interaction)
+
+        else:
+            # É uma única música
+            sanitized_info = await asyncio.to_thread(ydl.sanitize_info, info)
+            filename = ydl.prepare_filename(sanitized_info)
+
+            if voice_client.is_playing():
+                if interaction.guild.id not in song_queue:
+                    song_queue[interaction.guild.id] = []
+                song_queue[interaction.guild.id].append(
+                    {
+                        "filename": filename,
+                        "title": sanitized_info.get("title", "Música"),
+                    }
+                )
+                await interaction.followup.send(
+                    f'**{sanitized_info.get("title", "Música")}** adicionada à fila.'
+                )
+            else:
+                await asyncio.to_thread(ydl.download, [url])
+                source = discord.FFmpegPCMAudio(filename)
+                voice_client.play(
+                    source,
+                    after=lambda e: (
+                        play_next(interaction)
+                        if not e
+                        else print("Erro na reprodução:", e)
+                    ),
+                )
+                await interaction.followup.send(
+                    f'Tocando agora: **{sanitized_info.get("title", "Música")}**'
+                )
+
+    except Exception as e:
+        print(f"Ocorreu um erro no comando /tocar: {e}")
+        await interaction.followup.send(
+            f"Ocorreu um erro ao tentar tocar a música: {e}"
+        )
 
 
 @client.tree.command(name="parar", description="Para a música e limpa a fila.")
