@@ -38,15 +38,14 @@ intents.members = True
 
 # Cria uma instância do bot, SEM prefixo de comando
 client = commands.Bot(command_prefix="!", intents=intents)
-# Cria a árvore de comandos para gerenciar os slash commands
-tree = discord.app_commands.CommandTree(client)
+# A classe commands.Bot já cria uma CommandTree, então a linha 'tree = ...' foi removida.
 
 
 # Evento de inicialização
 @client.event
 async def on_ready():
-    # Sincroniza os slash commands com o Discord
-    await tree.sync()
+    # Sincroniza os slash commands com o Discord usando client.tree
+    await client.tree.sync()
     print(f"Bot logado como {client.user}")
     print("------")
 
@@ -54,31 +53,31 @@ async def on_ready():
 # --- Comandos de texto e entretenimento (Convertidos para Slash Commands) ---
 
 
-@tree.command(name="ping", description="Responde com Pong!")
+@client.tree.command(name="ping", description="Responde com Pong!")
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("Pong!")
 
 
-@tree.command(name="dica", description="Fornece uma dica de League of Legends.")
+@client.tree.command(name="dica", description="Fornece uma dica de League of Legends.")
 async def dica(interaction: discord.Interaction):
     await interaction.response.send_message(
         "Lembre-se de sempre comprar wards para ter visão do mapa!"
     )
 
 
-@tree.command(name="lol-build", description="Sugere uma build para um campeão.")
+@client.tree.command(name="lol-build", description="Sugere uma build para um campeão.")
 async def lol_build(interaction: discord.Interaction):
     await interaction.response.send_message(
         "Tryndamere: Gume do Infinito, Colhedor de Essência e Mata-Cráquens."
     )
 
 
-@tree.command(name="debuia", description="Exibe a frase de efeito do time.")
+@client.tree.command(name="debuia", description="Exibe a frase de efeito do time.")
 async def debuia(interaction: discord.Interaction):
     await interaction.response.send_message("Mesmo na derrota vamos debuiaaa!")
 
 
-@tree.command(name="piada", description="Conta uma piada aleatória.")
+@client.tree.command(name="piada", description="Conta uma piada aleatória.")
 async def piada(interaction: discord.Interaction):
     piadas = [
         "O que o tomate foi fazer no banco? Foi tirar um extrato!",
@@ -104,7 +103,7 @@ ydl_opts = {
 }
 
 
-@tree.command(name="entrar", description="Conecta o bot ao seu canal de voz.")
+@client.tree.command(name="entrar", description="Conecta o bot ao seu canal de voz.")
 async def entrar(interaction: discord.Interaction):
     if not interaction.user.voice:
         await interaction.response.send_message(
@@ -119,7 +118,7 @@ async def entrar(interaction: discord.Interaction):
     )
 
 
-@tree.command(name="sair", description="Desconecta o bot do canal de voz.")
+@client.tree.command(name="sair", description="Desconecta o bot do canal de voz.")
 async def sair(interaction: discord.Interaction):
     if interaction.guild.voice_client:
         await interaction.guild.voice_client.disconnect()
@@ -130,7 +129,7 @@ async def sair(interaction: discord.Interaction):
         )
 
 
-@tree.command(name="tocar", description="Toca uma música do YouTube.")
+@client.tree.command(name="tocar", description="Toca uma música do YouTube.")
 async def tocar(interaction: discord.Interaction, url: str):
     if not interaction.guild.voice_client:
         await interaction.response.send_message(
@@ -164,7 +163,7 @@ async def tocar(interaction: discord.Interaction, url: str):
 # --- Comandos de integração com a API da Riot (Convertidos para Slash Commands) ---
 
 
-@tree.command(
+@client.tree.command(
     name="historicolol",
     description="Mostra o histórico das 5 partidas mais recentes de um invocador.",
 )
@@ -217,7 +216,7 @@ async def lol_match(interaction: discord.Interaction, summoner_name: str):
         await interaction.channel.send(f"Ocorreu um erro: {e}")
 
 
-@tree.command(name="elolol", description="Retorna o elo e rank de um jogador.")
+@client.tree.command(name="elolol", description="Retorna o elo e rank de um jogador.")
 async def lol_rank(interaction: discord.Interaction, summoner_name: str):
     summoner_url = f"https://br1.api.riotgames.com/lol/summoner/v4/summoners/by-name/{summoner_name}?api_key={riot_api_key}"
 
@@ -263,7 +262,7 @@ async def lol_rank(interaction: discord.Interaction, summoner_name: str):
         await interaction.followup.send(f"Ocorreu um erro: {e}")
 
 
-@tree.command(
+@client.tree.command(
     name="lol-live",
     description="Mostra os jogadores e campeões de uma partida em andamento.",
 )
@@ -326,7 +325,9 @@ async def lol_live(interaction: discord.Interaction, summoner_name: str):
         await interaction.followup.send(f"Ocorreu um erro: {e}")
 
 
-@tree.command(name="comandos", description="Exibe a lista de todos os comandos do bot.")
+@client.tree.command(
+    name="comandos", description="Exibe a lista de todos os comandos do bot."
+)
 async def comandos(interaction: discord.Interaction):
     embed = discord.Embed(
         title="🤖 Comandos do Bot Debuia Team",
