@@ -66,6 +66,103 @@ async def dica(interaction: discord.Interaction):
     )
 
 
+import requests
+
+
+@client.tree.command(
+    name="signo", description="Mostra a previsão diária de um signo do zodíaco."
+)
+async def signo(interaction: discord.Interaction, signo: str):
+    await interaction.response.defer()
+
+    signos_validos = [
+        "aquario",
+        "peixes",
+        "aries",
+        "touro",
+        "gemeos",
+        "cancer",
+        "leao",
+        "virgem",
+        "libra",
+        "escorpiao",
+        "sagitario",
+        "capricornio",
+    ]
+    signo_lower = signo.lower()
+
+    if signo_lower not in signos_validos:
+        await interaction.followup.send(
+            "Por favor, forneça um signo válido em português (Ex: Gêmeos)."
+        )
+        return
+
+    # Mapear o nome do signo para o formato da API (sem acentuação)
+    signo_api = signo_lower.replace("ã", "a").replace("ç", "c")
+
+    # URL da API de horóscopo diário em português
+    api_url = f"https://horoscopefree.herokuapp.com/daily/pt/{signo_api}"
+
+    try:
+        response = requests.get(api_url)
+        response.raise_for_status()  # Lança um erro para status de resposta ruins (4xx ou 5xx)
+        horoscopo_data = response.json()
+
+        previsao = horoscopo_data.get(
+            "horoscopo_hoje", "Não foi possível obter a previsão."
+        )
+
+        # Criar o embed com a previsão do dia
+        embed = discord.Embed(
+            title=f"Horóscopo do Dia para {signo.capitalize()}",
+            description=previsao,
+            color=discord.Color.gold(),
+        )
+        embed.set_footer(text="Fonte: horoscopefree.herokuapp.com")
+
+        await interaction.followup.send(embed=embed)
+
+    except requests.exceptions.RequestException as err:
+        print(f"Erro ao acessar a API de horóscopo: {err}")
+        await interaction.followup.send(
+            "Ocorreu um erro ao tentar buscar a previsão do horóscopo."
+        )
+
+
+@client.tree.command(
+    name="ship", description="Calcula a compatibilidade entre duas pessoas."
+)
+async def ship(interaction: discord.Interaction, nome1: str, nome2: str):
+    await interaction.response.defer()
+
+    # Lógica para criar o nome do navio
+    metade1 = nome1[: len(nome1) // 2]
+    metade2 = nome2[len(nome2) // 2 :]
+    nome_do_navio = metade1 + metade2
+
+    # Gerar uma porcentagem aleatória de 0 a 100
+    compatibilidade = random.randint(0, 100)
+
+    # Criar o embed para uma apresentação visual melhor
+    embed = discord.Embed(
+        title="💘 Análise de Compatibilidade 💘",
+        description=f"O nome do navio é **{nome_do_navio.capitalize()}**!",
+        color=discord.Color.brand_red(),
+    )
+    embed.add_field(
+        name="Pessoas",
+        value=f"{nome1.capitalize()} e {nome2.capitalize()}",
+        inline=False,
+    )
+    embed.add_field(
+        name="Nível de Compatibilidade", value=f"**{compatibilidade}%**", inline=False
+    )
+
+    embed.set_image(url="https://i.imgur.com/gYj7R2z.png")
+
+    await interaction.followup.send(embed=embed)
+
+
 @client.tree.command(name="lol-build", description="Sugere uma build para um campeão.")
 async def lol_build(interaction: discord.Interaction):
     await interaction.response.send_message(
