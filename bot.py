@@ -296,9 +296,11 @@ async def piada(interaction: discord.Interaction):
 song_queue = {}
 ydl_opts = {
     "format": "bestaudio/best",
-    "noplaylist": True,  # Não queremos baixar playlists inteiras
-    "default_search": "auto",
+    "noplaylist": True,
+    "default_search": "ytsearch",
     "quiet": True,
+    "extract_flat": "in_playlist",
+    "force-ipv4": True,  # Garante que a conexão seja feita via IPv4
 }
 ydl = yt_dlp.YoutubeDL(ydl_opts)
 
@@ -372,15 +374,16 @@ async def tocar(interaction: discord.Interaction, url: str):
             return
 
     try:
+        # Extrai o link de áudio e as opções do FFmpeg
         info = await asyncio.to_thread(ydl.extract_info, url, download=False)
         if "entries" in info:
             info = info["entries"][0]
-            await interaction.followup.send(
-                "Playlist encontrada, tocando a primeira música."
-            )
 
         title = info.get("title", "Música Desconhecida")
         audio_url = info.get("url")
+        # options é um campo que o yt-dlp pode fornecer com flags do ffmpeg
+        ffmpeg_options = info.get("ffmpeg_options")
+
         if not audio_url:
             await interaction.followup.send("Não foi possível obter a URL de áudio.")
             return
@@ -391,10 +394,9 @@ async def tocar(interaction: discord.Interaction, url: str):
             song_queue[interaction.guild.id].append({"url": audio_url, "title": title})
             await interaction.followup.send(f"**{title}** adicionada à fila.")
         else:
+            # Passa a URL e as opções do FFmpeg diretamente
             source = discord.FFmpegPCMAudio(
-                audio_url,
-                executable=FFMPEG_EXECUTABLE,  # Informa o caminho do FFmpeg
-                before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+                audio_url, executable=FFMPEG_EXECUTABLE, options=ffmpeg_options
             )
             voice_client.play(
                 source,
