@@ -1,0 +1,17 @@
+[Unit]
+Description=Debuia Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=opc
+WorkingDirectory=/home/opc/debuiaBot
+ExecStart=/usr/bin/python3 /home/opc/debuiaBot/bot.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=debuia-bot
+
+[Install]
+WantedBy=multi-user.target

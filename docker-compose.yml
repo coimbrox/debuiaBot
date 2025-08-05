@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  discord-bot:
+    container_name: debuia-bot
+    build: .
+    env_file:
+      - .env
+    restart: unless-stopped
